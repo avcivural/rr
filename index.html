@@ -25,15 +25,17 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family
 #lives .last path{fill:var(--co);animation:blink .6s steps(2) infinite}
 @keyframes blink{50%{opacity:.25}}
 .iconbtn{pointer-events:auto;width:44px;height:42px;border-radius:12px;border:0;background:rgba(11,16,32,.88);color:var(--ink);display:flex;align-items:center;justify-content:center}
-#chips{position:absolute;left:12px;top:calc(env(safe-area-inset-top) + 66px);display:flex;gap:6px}
+#bars{position:absolute;left:12px;right:12px;top:calc(env(safe-area-inset-top) + 62px);display:flex;flex-direction:column;gap:6px}
+.barrow{display:flex;align-items:center;gap:8px;background:rgba(11,16,32,.88);border-radius:10px;padding:6px 10px;font:600 12px var(--fb);color:var(--soft)}
+.track{flex:1;height:10px;border-radius:5px;background:#2A3256;position:relative;overflow:hidden}
+#lvfill{position:absolute;left:0;top:0;bottom:0;background:var(--cy);border-radius:5px}
 .chip{background:rgba(11,16,32,.88);border-radius:10px;padding:5px 9px;font:600 12px var(--fb);color:var(--soft)}
 .chip.y{background:var(--acc);color:#0B1020;font-weight:700}
-#hud .bot{position:absolute;left:12px;right:12px;bottom:calc(env(safe-area-inset-bottom) + 12px);display:flex;gap:8px;align-items:center}
-#fuelbox{flex:1;display:flex;align-items:center;gap:10px;height:46px}
-#fuelbar{flex:1;height:12px;border-radius:6px;background:#2A3256;overflow:hidden;position:relative}
-#fuelfill{position:absolute;left:0;top:0;bottom:0;background:var(--acc);border-radius:6px}
+#hud .bot{position:absolute;right:12px;bottom:calc(env(safe-area-inset-bottom) + 12px)}
+#fuelbar{flex:1;height:10px;border-radius:5px;background:#2A3256;overflow:hidden;position:relative}
+#fuelfill{position:absolute;left:0;top:0;bottom:0;background:var(--acc);border-radius:5px}
 #fuelbar i{position:absolute;left:25%;top:0;bottom:0;width:2px;background:var(--ink);opacity:.6}
-#mbtn{pointer-events:auto;width:56px;height:46px;border-radius:12px;border:2px solid #2A3256;background:rgba(11,16,32,.88);color:#5B6487;font:700 18px var(--fd)}
+#mbtn{pointer-events:auto;width:60px;height:52px;border-radius:12px;border:2px solid #2A3256;background:rgba(11,16,32,.88);color:#5B6487;font:700 18px var(--fd)}
 #mbtn.on{border-color:var(--cy);color:#0B1020;background:var(--cy);animation:pulse 1s infinite}
 @keyframes pulse{50%{transform:scale(1.06)}}
 #toast{position:fixed;left:50%;top:38%;transform:translate(-50%,-50%);pointer-events:none;text-align:center;font:700 26px var(--fd);text-shadow:0 2px 8px #000;opacity:0;transition:opacity .25s;white-space:nowrap}
@@ -80,11 +82,11 @@ input[type=text]{width:100%;height:52px;border-radius:14px;border:1px solid var(
       <button class="iconbtn" id="pauseBtn" aria-label="Duraklat"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg></button>
     </div>
   </div>
-  <div id="chips"><span class="chip" id="hBridge"></span><span class="chip y" id="hMult"></span></div>
-  <div class="bot">
-    <div class="box" id="fuelbox"><span style="font:700 14px var(--fd);color:var(--co)">YAKIT</span><div id="fuelbar"><div id="fuelfill"></div><i></i></div></div>
-    <button id="mbtn" aria-label="M mühimmatını ateşle">M</button>
+  <div id="bars">
+    <div class="barrow"><span style="font:700 13px var(--fd);color:var(--co);width:44px">YAKIT</span><div id="fuelbar"><div id="fuelfill"></div><i></i></div><span id="hFuel" style="width:34px;text-align:right;font:700 13px var(--fd);color:var(--ink)"></span></div>
+    <div class="barrow"><span id="hBridge" style="white-space:nowrap"></span><div class="track" aria-label="Bölümün ne kadarı geçildi"><div id="lvfill"></div></div><span class="chip y" id="hMult" style="padding:2px 7px"></span></div>
   </div>
+  <div class="bot"><button id="mbtn" aria-label="M mühimmatını ateşle">M</button></div>
 </div>
 <div id="toast"></div>
 <div id="cover"></div>
@@ -97,7 +99,7 @@ const DB_URL = "https://sinema-duellosu-default-rtdb.europe-west1.firebasedataba
 const ROOT = "rr";            // Sinema Düellosu'ndan ayrı alan
 const SEZON = "1.0";          // sezon = sürüm
 const SN = 1;                 // sezon sıra numarası (yeni sezonda artar)
-const SURUM = 1;              // otomatik güncelleme numarası
+const SURUM = 2;              // otomatik güncelleme numarası
 let BIRCE = "";               // Birce fotoğrafı ortak tablodan (rr/birce) okunur
 const TEST = /[?&]test=1/.test(location.search);
 
@@ -358,7 +360,7 @@ function step(dt){
   // ateş
   G.lastFire-=dt; if(G.lastFire<=0){ G.lastFire=.13; G.bullets.push({x:G.px-6,y:pwy+20},{x:G.px+6,y:pwy+20}); if(Math.random()<.35) SND.shot(); }
   for(const b of G.bullets) b.y+=620*dt;
-  G.bullets=G.bullets.filter(b=>b.y<G.camY+H+20&&!b.dead);
+  G.bullets=G.bullets.filter(b=>b.y<G.camY+H-130&&!b.dead);   // üst panelin altında yok olur: görünmeyen hedef vurulmaz
   // varlıklar
   for(const e of ents){ if(!e.alive) continue; const sy=scrY(e.y); if(sy<-80||sy>H+80){ if(e.t==='jet'&&sy>H+80) e.alive=false; continue; }
     if(e.t==='boat'||e.t==='heli'){ e.x+=e.vx*dt; const b=bounds(e.y); let lo=b.L+18, hi=b.R-18; if(b.IL){ if(e.x<b.IL) hi=b.IL-14; else lo=b.IR+14; }
@@ -438,12 +440,14 @@ function resume(){ const c=$('#cover'); c.style.pointerEvents='none'; let n=3; c
 const JETI='<path d="M12 1.5 13.6 8 22 13v2.4l-8.4-2.6-.5 5.2 3.2 2.3V22L12 20.8 7.7 22v-1.7l3.2-2.3-.5-5.2L2 15.4V13l8.4-5z" fill="#F2C94C"/>';
 let hudCache='';
 function hud(force){
-  const key=[Math.round(G.score),G.lives,G.mult,G.bridges,G.hasM,Math.round(G.fuel),G.secNow].join('|'); if(key===hudCache&&!force) return; hudCache=key;
+  const key=[Math.round(G.score),G.lives,G.mult,G.bridges,G.hasM,Math.round(G.fuel),G.secNow,Math.round(playerWY()/60)].join('|'); if(key===hudCache&&!force) return; hudCache=key;
   $('#hScore').textContent=fmt(G.score);
   let lv=''; for(let i=0;i<3;i++){ const cls=i>=G.lives?'lost':(G.lives===1?'last':''); lv+=`<svg viewBox="0 0 24 24" class="${cls}" aria-hidden="true">${JETI}</svg>`; }
   $('#lives').innerHTML=lv; $('#lives').setAttribute('aria-label',`Kalan can: ${G.lives} / 3`);
   const s=G.secNow, l=levelOfSection(s), k=s-firstSectionOf(l)+1;
   $('#hBridge').textContent=`Bölüm ${l} · Köprü ${Math.min(k,bridgesInLevel(l))}/${bridgesInLevel(l)}`;
+  const lvStart=firstSectionOf(l)*SR*ROW, lvLen=bridgesInLevel(l)*SR*ROW; $('#lvfill').style.width=Math.max(0,Math.min(100,(playerWY()-lvStart)/lvLen*100))+'%';
+  $('#hFuel').textContent=Math.max(0,Math.round(G.fuel))+'%';
   $('#hMult').textContent='×'+G.mult+' seri'; $('#hMult').style.display=G.mult>1?'':'none';
   const f=$('#fuelfill'); f.style.width=Math.max(0,G.fuel)+'%'; f.style.background=G.fuel<25?'#FF7A59':'#F2C94C';
   const m=$('#mbtn'); m.classList.toggle('on',!!G.hasM); m.textContent='M';
@@ -454,7 +458,7 @@ const JP=['M5 30 L19 43 L19 47 L5 41 Z','M-5 30 L-19 43 L-19 47 L-5 41 Z','M6 -6
 const JC=['shade','body','shade','body','dark','shade','acc','acc','shade','body','body','shade'];
 function jet(x,y,sc,pal,rot=0,flame=true){
   ctx.save(); ctx.translate(x,y); ctx.rotate(rot); ctx.scale(sc,sc);
-  ctx.fillStyle='rgba(6,34,42,.28)'; ctx.beginPath(); ctx.ellipse(6,10,44,38,0,0,7); ctx.fill();
+  ctx.fillStyle='rgba(6,34,42,.22)'; ctx.beginPath(); ctx.arc(0,2,46,0,7); ctx.fill();
   JP.forEach((p,i)=>{ ctx.fillStyle=pal[JC[i]]; ctx.fill(p); });
   ctx.fillStyle='#1F8F8C'; ctx.beginPath(); ctx.ellipse(0,-27,3.6,10,0,0,7); ctx.fill();
   ctx.fillStyle='#CFFAF5'; ctx.beginPath(); ctx.ellipse(-1,-30,1.2,4.5,0,0,7); ctx.fill();
@@ -532,7 +536,7 @@ function draw(){
   for(const p of G.parts){ ctx.globalAlpha=Math.max(0,p.l); ctx.fillStyle=p.c; ctx.fillRect(p.x-2,scrY(p.y)-2,4,4); } ctx.globalAlpha=1;
   // oyuncu
   if(!G.dead&&!G.over){ if(!(G.inv>0&&Math.floor(G.time*12)%2)) jet(G.px,G.py,.42,PAL_ME,0,G.started);
-    if(drag){ ctx.strokeStyle='rgba(242,239,230,.5)'; ctx.setLineDash([4,4]); ctx.lineWidth=2; ctx.beginPath(); ctx.arc(G.px,G.py+4,30,0,7); ctx.stroke(); ctx.setLineDash([]); } }
+    if(drag){ ctx.strokeStyle='rgba(242,239,230,.5)'; ctx.setLineDash([4,4]); ctx.lineWidth=2; ctx.beginPath(); ctx.arc(G.px,G.py+1,34,0,7); ctx.stroke(); ctx.setLineDash([]); } }
 }
 
 /* ===================== OYUN BAŞLAT / BİTİR ===================== */
