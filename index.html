@@ -35,7 +35,7 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family
 #fuelbar{flex:1;height:10px;border-radius:5px;background:#2A3256;overflow:hidden;position:relative}
 #fuelfill{position:absolute;left:0;top:0;bottom:0;background:var(--acc);border-radius:5px}
 #fuelbar i{position:absolute;left:25%;top:0;bottom:0;width:2px;background:var(--ink);opacity:.6}
-#mbtn{pointer-events:auto;width:60px;height:52px;border-radius:12px;border:2px solid #2A3256;background:rgba(11,16,32,.88);color:#5B6487;font:700 18px var(--fd)}
+#mbtn{pointer-events:none;width:60px;height:52px;border-radius:12px;border:2px solid #2A3256;background:rgba(11,16,32,.88);color:#5B6487;font:700 18px var(--fd)}
 #mbtn.on{border-color:var(--cy);color:#0B1020;background:var(--cy);animation:pulse 1s infinite}
 @keyframes pulse{50%{transform:scale(1.06)}}
 #toast{position:fixed;left:50%;top:38%;transform:translate(-50%,-50%);pointer-events:none;text-align:center;font:700 26px var(--fd);text-shadow:0 2px 8px #000;opacity:0;transition:opacity .25s;white-space:nowrap}
@@ -86,7 +86,7 @@ input[type=text]{width:100%;height:52px;border-radius:14px;border:1px solid var(
     <div class="barrow"><span style="font:700 13px var(--fd);color:var(--co);width:44px">YAKIT</span><div id="fuelbar"><div id="fuelfill"></div><i></i></div><span id="hFuel" style="width:34px;text-align:right;font:700 13px var(--fd);color:var(--ink)"></span></div>
     <div class="barrow"><span id="hBridge" style="white-space:nowrap"></span><div class="track" aria-label="Bölümün ne kadarı geçildi"><div id="lvfill"></div></div><span class="chip y" id="hMult" style="padding:2px 7px"></span></div>
   </div>
-  <div class="bot"><button id="mbtn" aria-label="M mühimmatını ateşle">M</button></div>
+  <div class="bot"><div id="mbtn" role="status" aria-label="İkili atış göstergesi" style="display:flex;align-items:center;justify-content:center">M</div></div>
 </div>
 <div id="toast"></div>
 <div id="cover"></div>
@@ -99,7 +99,7 @@ const DB_URL = "https://sinema-duellosu-default-rtdb.europe-west1.firebasedataba
 const ROOT = "rr";            // Sinema Düellosu'ndan ayrı alan
 const SEZON = "1.0";          // sezon = sürüm
 const SN = 1;                 // sezon sıra numarası (yeni sezonda artar)
-const SURUM = 2;              // otomatik güncelleme numarası
+const SURUM = 3;              // otomatik güncelleme numarası
 let BIRCE = "";               // Birce fotoğrafı ortak tablodan (rr/birce) okunur
 const TEST = /[?&]test=1/.test(location.search);
 
@@ -261,7 +261,7 @@ function spawnSection(s){
   const im=Math.floor((info.isl.start+info.isl.end)/2), b=bounds(yOf(im));
   const narrowX = info.isl.narrowLeft ? (b.L+b.IL)/2 : (b.IR+b.R)/2;
   const wideX = info.isl.narrowLeft ? (b.IR+b.R)/2 : (b.L+b.IL)/2;
-  if(r()<.75) ents.push({t:'ammo',s,x:narrowX,y:yOf(im),alive:true});
+  if(r()<.3) ents.push({t:'ammo',s,x:narrowX,y:yOf(im),alive:true});   // M seyrek: yalnızca bazı dar geçitlerde
   ents.push({t:'fuel',s,x:wideX,y:yOf(im+2),alive:true});
   // ek yakıt istasyonları (bölüm ilerledikçe seyrek)
   const extraFuel = lv<=3?2:(lv<=7?1:(r()<.5?1:0));
@@ -284,7 +284,7 @@ function placeIn(r,t,s,row,vx=0){ const wy=row*ROW, b=bounds(wy); let lo=b.L+22,
 const G={running:false,paused:false,over:false};
 function newRun(){
   rows={L:[],R:[],IL:[],IR:[]}; genUpTo=-1; sectionInfo.length=0; ents=[];
-  Object.assign(G,{running:true,paused:false,over:false,dead:0,score:0,lives:3,mult:1,fuel:100,ck:0,hasM:false,mName:'',
+  Object.assign(G,{running:true,paused:false,over:false,dead:0,score:0,lives:3,mult:1,fuel:100,ck:0,dbl:0,
     lv:1,bridges:0,narrowSeen:null,lowBeep:0,started:false,time:0,usedBirce:false,lastFire:0,flash:0,lines:[]});
   spawnAt(0);
 }
@@ -306,18 +306,11 @@ cv.addEventListener('pointerdown',e=>{ if(!G.running||G.paused||G.dead) return; 
 cv.addEventListener('pointermove',e=>{ if(!drag) return; const p=ptr(e); G.tx=p.x+drag.ox; G.ty=p.y+drag.oy; });
 const endDrag=()=>{ drag=null; }; cv.addEventListener('pointerup',endDrag); cv.addEventListener('pointercancel',endDrag);
 
-$('#mbtn').addEventListener('click',()=>{ if(G.running&&!G.paused&&G.hasM&&!G.dead) fireM(); });
 $('#pauseBtn').addEventListener('click',()=>{ if(G.running&&!G.dead) pauseGame(true); });
 document.addEventListener('visibilitychange',()=>{ if(document.hidden&&G.running&&!G.dead) pauseGame(false); });
 
-function fireM(){
-  const tg=ents.filter(e=>e.alive&&(e.t==='boat'||e.t==='heli'||e.t==='jet')&&scrY(e.y)>-20&&scrY(e.y)<H+20&&e.x>-30&&e.x<W+30);
-  G.lines=tg.map(e=>({x:e.x,y:e.y,t:.5}));
-  let sum=0; for(const e of tg){ e.alive=false; sum+=addScore(PTS[e.t],true); boom(e.x,e.y,'#4FD1C5'); }
-  G.hasM=false; SND.salvo(); vib(40); toast(G.mName, tg.length?`${tg.length} hedef · +${fmt(sum)}`:'ekranda hedef yoktu'); hud(true);
-}
 const PTS={boat:30,heli:60,jet:100,fuel:80,bridge:500};
-const MNAMES=['Güdümlü Salvo','Zincir Yıldırım','Şok Dalgası'];
+const DBL_SURE=12;   // M ile kazanılan ikili atış süresi (sn)
 
 /* ===================== DÖNGÜ ===================== */
 let last=0;
@@ -358,7 +351,8 @@ function step(dt){
   if(G.fuel<25&&G.time-G.lowBeep>.9){ G.lowBeep=G.time; SND.low(); }
   if(G.fuel<=0){ G.fuel=0; return crash('Yakıt bitti'); }
   // ateş
-  G.lastFire-=dt; if(G.lastFire<=0){ G.lastFire=.13; G.bullets.push({x:G.px-6,y:pwy+20},{x:G.px+6,y:pwy+20}); if(Math.random()<.35) SND.shot(); }
+  G.lastFire-=dt; if(G.lastFire<=0){ G.lastFire=.13; if(G.dbl>0) G.bullets.push({x:G.px-6,y:pwy+20},{x:G.px+6,y:pwy+20}); else G.bullets.push({x:G.px,y:pwy+22}); if(Math.random()<.35) SND.shot(); }
+  if(G.dbl>0){ G.dbl-=dt; if(G.dbl<=0){ G.dbl=0; toast('İkili atış bitti'); } }
   for(const b of G.bullets) b.y+=620*dt;
   G.bullets=G.bullets.filter(b=>b.y<G.camY+H-130&&!b.dead);   // üst panelin altında yok olur: görünmeyen hedef vurulmaz
   // varlıklar
@@ -387,7 +381,7 @@ function step(dt){
       if(e.t==='bridge'){ if(Math.abs(pwy-e.y)<16) return crash('Köprüye çarptın'); continue; }
       const dx=Math.abs(e.x-G.px), dy=Math.abs(e.y-pwy);
       if(e.t==='fuel'){ if(dx<26&&dy<32){ if(G.fuel<100){ G.fuel=Math.min(100,G.fuel+38*dt); if(Math.random()<.2) SND.fuel(); } } continue; }
-      if(e.t==='ammo'){ if(dx<26&&dy<26){ if(!G.hasM){ e.alive=false; G.hasM=true; G.mName=MNAMES[Math.floor(Math.random()*3)]; SND.pick(); toast('M alındı',G.mName+' hazır'); } } continue; }
+      if(e.t==='ammo'){ if(dx<26&&dy<26){ e.alive=false; G.dbl=DBL_SURE; SND.pick(); toast('M alındı',DBL_SURE+' saniye ikili atış'); } continue; }
       const hw=e.t==='jet'?26:20; if(dx<hw&&dy<16) return crash(e.t==='heli'?'Helikoptere çarptın':e.t==='jet'?'Uçağa çarptın':'Tekneye çarptın');
     }
   }
@@ -417,7 +411,7 @@ function part(x,wy,c){ const a=Math.random()*Math.PI*2, v=40+Math.random()*160; 
 function boom(x,wy,c){ for(let i=0;i<14;i++) G.parts.push(part(x,wy,c)); }
 function crash(why){
   if(TEST&&window.__god) return;
-  G.dead=1.3; drag=null; G.lives--; G.mult=1; boom(G.px,playerWY(),'#FF7A59'); boom(G.px,playerWY(),'#F2C94C'); SND.boom(); vib([80,40,120]);
+  G.dead=1.3; drag=null; G.lives--; G.mult=1; G.dbl=0; boom(G.px,playerWY(),'#FF7A59'); boom(G.px,playerWY(),'#F2C94C'); SND.boom(); vib([80,40,120]);
   toast(why, G.lives>0?`${G.lives} can kaldı`:'Oyun bitti'); hud(true);
   if(TEST) window.__events.push('crash');
 }
@@ -440,7 +434,7 @@ function resume(){ const c=$('#cover'); c.style.pointerEvents='none'; let n=3; c
 const JETI='<path d="M12 1.5 13.6 8 22 13v2.4l-8.4-2.6-.5 5.2 3.2 2.3V22L12 20.8 7.7 22v-1.7l3.2-2.3-.5-5.2L2 15.4V13l8.4-5z" fill="#F2C94C"/>';
 let hudCache='';
 function hud(force){
-  const key=[Math.round(G.score),G.lives,G.mult,G.bridges,G.hasM,Math.round(G.fuel),G.secNow,Math.round(playerWY()/60)].join('|'); if(key===hudCache&&!force) return; hudCache=key;
+  const key=[Math.round(G.score),G.lives,G.mult,G.bridges,Math.ceil(G.dbl),Math.round(G.fuel),G.secNow,Math.round(playerWY()/60)].join('|'); if(key===hudCache&&!force) return; hudCache=key;
   $('#hScore').textContent=fmt(G.score);
   let lv=''; for(let i=0;i<3;i++){ const cls=i>=G.lives?'lost':(G.lives===1?'last':''); lv+=`<svg viewBox="0 0 24 24" class="${cls}" aria-hidden="true">${JETI}</svg>`; }
   $('#lives').innerHTML=lv; $('#lives').setAttribute('aria-label',`Kalan can: ${G.lives} / 3`);
@@ -450,7 +444,7 @@ function hud(force){
   $('#hFuel').textContent=Math.max(0,Math.round(G.fuel))+'%';
   $('#hMult').textContent='×'+G.mult+' seri'; $('#hMult').style.display=G.mult>1?'':'none';
   const f=$('#fuelfill'); f.style.width=Math.max(0,G.fuel)+'%'; f.style.background=G.fuel<25?'#FF7A59':'#F2C94C';
-  const m=$('#mbtn'); m.classList.toggle('on',!!G.hasM); m.textContent='M';
+  const m=$('#mbtn'); m.classList.toggle('on',G.dbl>0); m.textContent=G.dbl>0?'×2 '+Math.ceil(G.dbl):'M';
 }
 
 /* ===================== ÇİZİM ===================== */
@@ -679,11 +673,11 @@ function profile(){
 function about(){
   show(`<div class="about" style="display:flex;flex-direction:column;gap:8px"><h2 style="font:700 30px var(--fd)">Hakkında</h2>
     <p style="font:700 22px/1.2 Caveat,cursive;color:var(--ink)">Çocukluğumuzun oyununa saygılarımızla. 1982'nin nehir uçuşu oyunlarından esinlenen, aile için yapılmış bir oyundur; adı, çizimleri ve kodu bu oyuna özeldir.</p>
-    <h3>Nasıl oynanır</h3><ul style="margin:0;padding-left:18px"><li>Uçağın üstüne basılı tut ve sürükle. Ateş kendiliğinden.</li><li>Uçağı yukarı taşırsan nehir hızlanır, aşağı çekersen yavaşlar.</li><li>Kıyıya, adaya, köprüye, helikoptere, tekneye ya da düşman uçağına çarparsan patlarsın.</li><li>Yakıt sürekli azalır. Yakıt istasyonunun üstünden geçerek dolarsın. Ateş hiç durmadığı için mermiler istasyonun üstünden geçer.</li><li>Köprü tek atışla yıkılmaz (4 isabetten başlar, bölümle 8'e çıkar). Yıkmadan geçemezsin. Her köprü kayıt noktasıdır.</li><li>Dar kanallarda <b>M</b> çıkar: tek M taşınır. Basınca ekrandaki bütün hedeflere bir kez güdümlü atış yapar, sonra biter. Köprüyü yıkmaz, yakıt vermez.</li></ul>
+    <h3>Nasıl oynanır</h3><ul style="margin:0;padding-left:18px"><li>Uçağın üstüne basılı tut ve sürükle. Ateş kendiliğinden.</li><li>Uçağı yukarı taşırsan nehir hızlanır, aşağı çekersen yavaşlar.</li><li>Kıyıya, adaya, köprüye, helikoptere, tekneye ya da düşman uçağına çarparsan patlarsın.</li><li>Yakıt sürekli azalır. Yakıt istasyonunun üstünden geçerek dolarsın. Ateş hiç durmadığı için mermiler istasyonun üstünden geçer.</li><li>Köprü tek atışla yıkılmaz (4 isabetten başlar, bölümle 8'e çıkar). Yıkmadan geçemezsin. Her köprü kayıt noktasıdır.</li><li>Ateş tek namludur. Bazı dar kanallarda seyrek olarak <b>M</b> çıkar: üstünden geçince 12 saniye <b>ikili atış</b> kazanırsın (sağ altta ×2 ve kalan süre). Can gidince ikili atış da biter.</li></ul>
     <h3>Canlar</h3><p>3 canla başlarsın. Can gidince son köprüden dolu yakıtla devam edersin. Son can kırmızı yanıp söner. Üç can bitince oyun biter, sonraki oyun en baştan başlar. Bölüm bitince +1 can (en fazla 3).</p>
     <h3>Birce hakkı</h3><p>Sezonda bir kez: oyun bitince son köprüden 1 canla devam. Kullananın adının yanında Birce rozeti görünür.</p>
     <h3>Puanlar</h3><table><tr><td>Tekne</td><td>30</td></tr><tr><td>Helikopter</td><td>60</td></tr><tr><td>Düşman uçağı (2. bölümden)</td><td>100</td></tr><tr><td>Köprü</td><td>500</td></tr></table>
-    <p><b>Hesap:</b> puan = hedef puanı × bölüm katsayısı × seri çarpanı.<br>Bölüm katsayısı: her bölüm %20 artar (1. bölüm ×1,0 … 10. bölüm ×2,8).<br>Seri çarpanı: ölmeden geçilen her köprü +1 (en fazla ×5); can gidince ×1.<br>M ile vurulan hedefler yarı puan verir.</p>
+    <p><b>Hesap:</b> puan = hedef puanı × bölüm katsayısı × seri çarpanı.<br>Bölüm katsayısı: her bölüm %20 artar (1. bölüm ×1,0 … 10. bölüm ×2,8).<br>Seri çarpanı: ölmeden geçilen her köprü +1 (en fazla ×5); can gidince ×1.</p>
     <p><b>Bonuslar:</b> dar geçitten çarpmadan geçmek +250 · köprüde kalan yakıt yüzdesi × 5 · bölüm sonu 2.000 × bölüm no.</p>
     <h3>Bölümler</h3><p>${LV.slice(1).map((l,i)=>`${i+1}. ${l.ad} (${bridgesInLevel(i+1)} köprü)`).join(' · ')}</p>
     <h3>Sezon ve tablo</h3><p>Sezon ${SEZON}. Tabloda her oyuncunun sezon içindeki en yüksek tek oyun skoru görünür. Yeni sezon yeni sürümle başlar; ilk üç şeref kürsüsüne yazılır.</p>
@@ -701,7 +695,7 @@ async function boot(){
   splash();
 }
 addEventListener('online',()=>{ if(!ui.classList.contains('hide')&&/bağlantısı yok/.test(ui.textContent)) boot(); });
-if(TEST){ window.__events=[]; window.__G=G; window.__S=()=>S; window.__api={startGame,gameOver,crash,fireM,useBirce,spawnAt,bounds,ents:()=>ents,sectionInfo,levelOfSection,firstSectionOf,passBridge}; }
+if(TEST){ window.__events=[]; window.__G=G; window.__S=()=>S; window.__api={startGame,gameOver,crash,useBirce,spawnAt,bounds,ents:()=>ents,sectionInfo,levelOfSection,firstSectionOf,passBridge}; }
 boot();
 </script>
 </body>
