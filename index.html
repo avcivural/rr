@@ -112,7 +112,7 @@ const DB_URL = "https://sinema-duellosu-default-rtdb.europe-west1.firebasedataba
 const ROOT = "rr";            // Sinema Düellosu'ndan ayrı alan
 const SEZON = "Test";         // sezon adı (gerçek yayında "1.0" ve SN=2 olacak)
 const SN = 1;                 // sezon sıra numarası (yeni sezonda artar)
-const SURUM = 5;              // otomatik güncelleme numarası
+const SURUM = 6;              // otomatik güncelleme numarası
 let BIRCE = "";               // Birce fotoğrafı ortak tablodan (rr/birce) okunur
 const TEST = /[?&]test=1/.test(location.search);
 
@@ -187,7 +187,7 @@ function tone(f,d,type='square',v=.04,slide=0){ if(!sesAcik||G.demo) return; con
   g.gain.setValueAtTime(v,t); g.gain.exponentialRampToValueAtTime(.0001,t+d); o.connect(g).connect(a.destination); o.start(t); o.stop(t+d); }
 function noise(d,v=.25){ if(!sesAcik||G.demo) return; const a=ac(); if(!a) return; const b=a.createBuffer(1,a.sampleRate*d,a.sampleRate), x=b.getChannelData(0);
   for(let i=0;i<x.length;i++) x[i]=(Math.random()*2-1)*(1-i/x.length); const s=a.createBufferSource(), g=a.createGain(); g.gain.value=v; s.buffer=b; s.connect(g).connect(a.destination); s.start(); }
-const SND={ shot:()=>tone(880,.05,'square',.012,-300), hit:()=>tone(220,.08,'square',.03,-100), boom:()=>{noise(.5,.3);tone(90,.4,'sawtooth',.05,-50)},
+const SND={ drop:()=>tone(1200,.5,'sine',.025,-900), bomb:()=>{noise(.35,.22);tone(70,.3,'sawtooth',.04,-30);}, tank:()=>tone(160,.12,'square',.03,-80), shot:()=>tone(880,.05,'square',.012,-300), hit:()=>tone(220,.08,'square',.03,-100), boom:()=>{noise(.5,.3);tone(90,.4,'sawtooth',.05,-50)},
   fuel:()=>tone(520,.07,'triangle',.03,120), low:()=>tone(1200,.12,'square',.03), bridge:()=>{noise(.8,.35);tone(60,.6,'sawtooth',.06,-30)},
   pick:()=>{tone(660,.08,'triangle',.05,200);setTimeout(()=>tone(990,.12,'triangle',.05,200),80)}, salvo:()=>{for(let i=0;i<5;i++)setTimeout(()=>tone(400+i*120,.1,'sawtooth',.03,600),i*50)},
   bonus:()=>{[523,659,784,1046].forEach((f,i)=>setTimeout(()=>tone(f,.12,'triangle',.05),i*90))} };
@@ -221,84 +221,113 @@ function rng(seed){ let s=seed>>>0||1; return ()=>{ s^=s<<13; s>>>=0; s^=s>>>17;
 const SEED=20261115;
 
 /* Satırlar: L,R = kıyılar; IL,IR = ada (yoksa 0) */
-let rows={L:[],R:[],IL:[],IR:[]}, genUpTo=-1;
+let rows={L:[],R:[],IL:[],IR:[],JL:[],JR:[]}, genUpTo=-1;
 const sectionInfo=[];     // her bölüm parçası için: köprü satırı, ada bilgisi
 function genSection(s){
   const r=rng(SEED+s*7919), lv=levelOfSection(s), r0=s*SR;
   const minHW=Math.max(70,112-lv*4), maxHW=Math.max(110,160-lv*3);
   let cx=195, hw=72;
   const keys=[]; // kontrol noktaları
-  // başlangıç: köprü genişliğinden aç
   keys.push([0,195,72],[6,195,72]);
   let row=14;
-  const isl = { has: s>0 || true, start:0, end:0, narrowLeft:r()<.5 };
-  const islStart = 46+Math.floor(r()*14), islLen = 30+Math.floor(r()*10);
+  // üçlü geçit (2. bölümden) ve köprü öncesi boğaz: her parça için sabit, her oyunda aynı yerde
+  const tri = s>0 && lv>=2 && r()<Math.min(.55,.2+.05*lv);
+  const strait = s>0 && r()<Math.min(.5,.14+.05*lv);
+  const isl = { start:0, end:0, narrowLeft:r()<.5, tri, mined:-1 };
+  const islStart = strait? 34+Math.floor(r()*8) : 46+Math.floor(r()*14), islLen = strait? 26+Math.floor(r()*6) : 30+Math.floor(r()*10);
   isl.start=islStart; isl.end=islStart+islLen;
-  while(row<SR-14){
-    if(row>=islStart-6 && row<=isl.end+4){ // ada bölgesi: geniş ve düz
-      keys.push([islStart-6,195,150],[isl.end+4,195,150]); row=isl.end+12; continue; }
+  const endRow = strait? SR-38 : SR-14;
+  while(row<endRow){
+    if(row>=islStart-6 && row<=isl.end+4){ keys.push([islStart-6,195,150],[isl.end+4,195,150]); row=isl.end+12; continue; }
     cx=Math.max(150,Math.min(240,cx+(r()-.5)*90)); hw=minHW+r()*(maxHW-minHW);
     if(row+8>islStart-6 && row<islStart-6){ row=islStart-6; continue; }
     keys.push([row,cx,hw]); row+=8+Math.floor(r()*6);
   }
-  keys.push([SR-10,195,72],[SR,195,72]);
+  if(strait){ const c1=195+(r()-.5)*70, c2=195+(r()-.5)*56; keys.push([SR-32,c1,46],[SR-12,c2,44],[SR-6,195,72],[SR,195,72]); }
+  else keys.push([SR-10,195,72],[SR,195,72]);
   keys.sort((a,b)=>a[0]-b[0]);
   for(let i=0;i<SR;i++){
     let k=0; while(k<keys.length-2&&keys[k+1][0]<=i) k++;
     const a=keys[k], b=keys[k+1]; const t=b[0]===a[0]?0:Math.min(1,Math.max(0,(i-a[0])/(b[0]-a[0])));
     const e=t*t*(3-2*t); const c=a[1]+(b[1]-a[1])*e, w=a[2]+(b[2]-a[2])*e;
-    const ri=r0+i; rows.L[ri]=Math.round(c-w); rows.R[ri]=Math.round(c+w); rows.IL[ri]=0; rows.IR[ri]=0;
+    const ri=r0+i; rows.L[ri]=Math.round(c-w); rows.R[ri]=Math.round(c+w); rows.IL[ri]=0; rows.IR[ri]=0; rows.JL[ri]=0; rows.JR[ri]=0;
   }
-  // ada: dar taraf = tek uçaklık kanal (~78 birim)
   const nar=78;
   for(let i=isl.start;i<isl.end;i++){
     const ri=r0+i, L=rows.L[ri], R=rows.R[ri];
     const edge=Math.min(1,Math.min(i-isl.start,isl.end-1-i)/5);   // uçları sivri
-    if(isl.narrowLeft){ const il=L+nar, ir=R-130; rows.IL[ri]=Math.round(il+(1-edge)*20); rows.IR[ri]=Math.round(ir-(1-edge)*20); }
+    if(tri){ // üç kanal: 76 + ada 36 + 76 + ada 36 + 76
+      const c=76, w=(R-L-3*c)/2, sh=(1-edge)*Math.min(15,w/2-2);
+      rows.IL[ri]=Math.round(L+c+sh); rows.IR[ri]=Math.round(L+c+w-sh); rows.JL[ri]=Math.round(L+2*c+w+sh); rows.JR[ri]=Math.round(L+2*c+2*w-sh); }
+    else if(isl.narrowLeft){ const il=L+nar, ir=R-130; rows.IL[ri]=Math.round(il+(1-edge)*20); rows.IR[ri]=Math.round(ir-(1-edge)*20); }
     else { const ir=R-nar, il=L+130; rows.IL[ri]=Math.round(il+(1-edge)*20); rows.IR[ri]=Math.round(ir-(1-edge)*20); }
   }
-  sectionInfo[s]={bridgeRow:r0+SR-4, isl:{start:r0+isl.start,end:r0+isl.end,narrowLeft:isl.narrowLeft}, lv};
+  if(tri&&lv>=3) isl.mined=Math.floor(r()*3);   // 3. bölümden: kanallardan biri mayınlı
+  sectionInfo[s]={bridgeRow:r0+SR-4, isl:{start:r0+isl.start,end:r0+isl.end,narrowLeft:isl.narrowLeft,tri,mined:isl.mined}, lv, strait};
   genUpTo=Math.max(genUpTo,s);
 }
 function ensureRows(uptoRow){ while((genUpTo+1)*SR<=uptoRow+SR) genSection(genUpTo+1); }
 function bounds(wy){ const f=wy/ROW, i=Math.max(0,Math.floor(f)), t=f-i; ensureRows(i+2);
   const g=(A)=>A[i]+(A[i+1]-A[i])*t;
-  let IL=0,IR=0; if(rows.IL[i]&&rows.IL[i+1]){ IL=g(rows.IL); IR=g(rows.IR); }
-  return {L:g(rows.L),R:g(rows.R),IL,IR}; }
+  let IL=0,IR=0,JL=0,JR=0; if(rows.IL[i]&&rows.IL[i+1]){ IL=g(rows.IL); IR=g(rows.IR); } if(rows.JL[i]&&rows.JL[i+1]){ JL=g(rows.JL); JR=g(rows.JR); }
+  return {L:g(rows.L),R:g(rows.R),IL,IR,JL,JR}; }
+/* su kanalları: [sol,sağ] aralıkları (ada yoksa 1, tek adada 2, üçlü geçitte 3) */
+function segs(b){ const a=[]; let x=b.L; if(b.IL){ a.push([x,b.IL]); x=b.IR; } if(b.JL){ a.push([x,b.JL]); x=b.JR; } a.push([x,b.R]); return a; }
+function inWater(b,x){ if(x<b.L||x>b.R) return false; if(b.IL&&x>b.IL&&x<b.IR) return false; if(b.JL&&x>b.JL&&x<b.JR) return false; return true; }
+function chanOf(b,x){ const a=segs(b); for(const c of a) if(x<=c[1]) return c; return a[a.length-1]; }
 
 /* Varlıklar: tekne, helikopter, jet, yakıt, M, köprü */
 let ents=[];
 function spawnSection(s){
   ensureRows((s+1)*SR+2); const info=sectionInfo[s]; const r=rng(SEED+s*104729), lv=info.lv, r0=s*SR;
   const yOf=row=>row*ROW;
-  ents.push({t:'bridge',s,y:yOf(info.bridgeRow),hp:Math.min(8,4+Math.floor((lv-1)*0.45)),max:Math.min(8,4+Math.floor((lv-1)*0.45)),alive:true});
-  // ada ikilemi: dar kanalda M, geniş kanalda yakıt
+  // köprü: daha dayanıklı; yıkılınca iki yanda ayakları kalır, aradaki boşluktan geçilir
+  const hp=Math.min(18,10+(lv-1)), by=yOf(info.bridgeRow), bb=bounds(by), gap=Math.max(80,112-(lv-1)*4);
+  const gc=(bb.L+bb.R)/2+(r()-.5)*Math.max(0,bb.R-bb.L-gap-16);
+  ents.push({t:'bridge',s,y:by,hp,max:hp,alive:true,gl:gc-gap/2,gr:gc+gap/2});
   const im=Math.floor((info.isl.start+info.isl.end)/2), b=bounds(yOf(im));
-  const narrowX = info.isl.narrowLeft ? (b.L+b.IL)/2 : (b.IR+b.R)/2;
-  const wideX = info.isl.narrowLeft ? (b.IR+b.R)/2 : (b.L+b.IL)/2;
-  if(r()<.3) ents.push({t:'ammo',s,x:narrowX,y:yOf(im),alive:true});   // M seyrek: yalnızca bazı dar geçitlerde
-  ents.push({t:'fuel',s,x:wideX,y:yOf(im+2),alive:true});
-  // ek yakıt istasyonları (bölüm ilerledikçe seyrek)
+  if(info.isl.tri){
+    const ch=segs(b).map(c=>(c[0]+c[1])/2), m=info.isl.mined;
+    const free=[0,1,2].filter(i=>i!==m), fi=free[Math.floor(r()*free.length)];
+    ents.push({t:'fuel',s,x:ch[fi],y:yOf(im+2),alive:true});
+    const oi=free.find(i=>i!==fi); if(oi!==undefined&&r()<.3) ents.push({t:'ammo',s,x:ch[oi],y:yOf(im),alive:true});
+    if(m>=0){ const len=info.isl.end-info.isl.start; for(const f of [.55,.75]){ const row=info.isl.start+Math.floor(len*f), bm=bounds(yOf(row)), c=segs(bm)[m]; if(c) ents.push({t:'mine',s,x:(c[0]+c[1])/2,y:yOf(row),alive:true}); } }
+  } else {
+    // ada ikilemi: dar kanalda M, geniş kanalda yakıt
+    const narrowX = info.isl.narrowLeft ? (b.L+b.IL)/2 : (b.IR+b.R)/2;
+    const wideX = info.isl.narrowLeft ? (b.IR+b.R)/2 : (b.L+b.IL)/2;
+    if(r()<.3) ents.push({t:'ammo',s,x:narrowX,y:yOf(im),alive:true});
+    ents.push({t:'fuel',s,x:wideX,y:yOf(im+2),alive:true});
+  }
   const extraFuel = lv<=3?2:(lv<=7?1:(r()<.5?1:0));
   for(let k=0;k<extraFuel;k++){ const row=r0+12+Math.floor(r()*(info.isl.start-r0-20>10?info.isl.start-r0-20:20)); placeIn(r,'fuel',s,row); }
-  // düşmanlar
-  const n=4+lv+Math.floor(r()*3);
+  // düşmanlar: her biri farklı hızda (duran, yavaş, normal, hızlı)
+  const spd=()=>{ const q=r(); return q<.15?0:q<.4?18+r()*22:q<.85?45+r()*45:100+r()*50; };
+  const n=4+lv+Math.floor(r()*3), lastRow=info.strait? SR-34 : SR-14;
   for(let k=0;k<n;k++){
-    const row=r0+12+Math.floor(r()*(SR-26));
+    const row=r0+12+Math.floor(r()*(lastRow-12));
     const roll=r(); let t='boat';
     if(lv>=2&&roll<.22) t='jet'; else if(roll<.6) t='heli';
-    if(t==='jet'){ ents.push({t,s,y:yOf(row),x:r()<.5?-50:W+50,vx:0,dir:r()<.5?1:-1,alive:true,armed:false}); continue; }
-    placeIn(r,t,s,row,(30+r()*40+lv*4)*(r()<.5?-1:1));
+    if(t==='jet'){ ents.push({t,s,y:yOf(row),x:r()<.5?-50:W+50,vx:0,dir:r()<.5?1:-1,spd:150+r()*170+lv*8,bomb:true,back:0,wait:0,alive:true,armed:false}); continue; }
+    let v=spd(), ex={};
+    if(t==='heli'&&lv>=5&&r()<.35){ v=0; ex={amb:true}; }            // pusu helikopteri: bekler, yaklaşınca fırlar
+    if(t==='boat'&&lv>=6&&r()<.4){ v=160+r()*40; ex={fast:true}; }    // sürat botu
+    else if(v>0) v+=lv*4;
+    placeIn(r,t,s,row,v*(r()<.5?-1:1),ex);
   }
+  // kıyı tankları (4. bölümden): kıyıda durur, uçağa nişan alıp ateş eder
+  if(lv>=4){ const nt=1+(lv>=7?1:0)+(r()<.5?1:0);
+    for(let k=0;k<nt;k++){ const row=r0+16+Math.floor(r()*(SR-40)), wy=yOf(row), bt=bounds(wy), left=r()<.5, x=left?bt.L-26:bt.R+26;
+      if(x>14&&x<W-14) ents.push({t:'tank',s,x,y:wy,left,cd:.6,shots:0,alive:true,ang:left?0:Math.PI}); } }
 }
-function placeIn(r,t,s,row,vx=0){ const wy=row*ROW, b=bounds(wy); let lo=b.L+22, hi=b.R-22;
-  if(b.IL){ if(r()<.5) hi=b.IL-18; else lo=b.IR+18; }
-  if(hi-lo<10) return; ents.push({t,s,x:lo+r()*(hi-lo),y:wy,vx,alive:true}); }
+function placeIn(r,t,s,row,vx=0,ex){ const wy=row*ROW, b=bounds(wy), sg=segs(b), c=sg[Math.floor(r()*sg.length)];
+  const lo=c[0]+22, hi=c[1]-22;
+  if(hi-lo<10) return; ents.push(Object.assign({t,s,x:lo+r()*(hi-lo),y:wy,vx,alive:true},ex||{})); }
 
 /* ===================== OYUN DURUMU ===================== */
 const G={running:false,paused:false,over:false};
 function newRun(){
-  rows={L:[],R:[],IL:[],IR:[]}; genUpTo=-1; sectionInfo.length=0; ents=[];
+  rows={L:[],R:[],IL:[],IR:[],JL:[],JR:[]}; genUpTo=-1; sectionInfo.length=0; ents=[];
   Object.assign(G,{demo:false,running:true,paused:false,over:false,dead:0,score:0,lives:3,mult:1,fuel:100,ck:0,dbl:0,
     lv:1,bridges:0,deaths:[],narrowSeen:null,lowBeep:0,started:false,time:0,usedBirce:false,lastFire:0,flash:0,lines:[]});
   spawnAt(0);
@@ -306,7 +335,7 @@ function newRun(){
 function spawnAt(s){
   ents=ents.filter(e=>e.s<s); // eski parçalar
   ents=[]; spawnSection(s); spawnSection(s+1); G.spawnedTo=s+1;
-  G.camY=s*SR*ROW; G.px=195; G.py=H-150; G.tx=G.px; G.ty=G.py; G.fuel=100; G.dead=0; G.bullets=[]; G.parts=[]; G.lv=levelOfSection(s); G.secNow=s;
+  G.camY=s*SR*ROW; G.px=195; G.py=H-150; G.tx=G.px; G.ty=G.py; G.fuel=100; G.dead=0; G.bullets=[]; G.parts=[]; G.bombs=[]; G.shells=[]; G.lv=levelOfSection(s); G.secNow=s;
   G.narrowSeen=null; G.passedBridgeOf=s-1; G.inv=1.2;
 }
 const playerWY=()=>G.camY+(H-G.py);
@@ -325,7 +354,8 @@ $('#pauseBtn').addEventListener('click',()=>{ if(G.running&&!G.dead) pauseGame(t
 document.addEventListener('visibilitychange',()=>{ if(document.hidden&&G.running&&!G.dead) pauseGame(false); });
 
 const PTS={boat:30,heli:60,jet:100,fuel:80,bridge:500};
-const DBL_SURE=12;   // M ile kazanılan ikili atış süresi (sn)
+const DBL_SURE=12;
+const YENI={2:'jetler bomba atar, üçlü geçitler',3:'mayınlı geçitler',4:'kıyı tankları',5:'pusu helikopterleri',6:'sürat botları'};   // her bölümün yeni tehdidi   // M ile kazanılan ikili atış süresi (sn)
 
 /* ===================== DÖNGÜ ===================== */
 let last=0;
@@ -371,18 +401,37 @@ function step(dt){
   for(const b of G.bullets) b.y+=620*dt;
   G.bullets=G.bullets.filter(b=>b.y<G.camY+H-72&&!b.dead);   // üst panelin altında yok olur: görünmeyen hedef vurulmaz
   // varlıklar
-  for(const e of ents){ if(!e.alive) continue; const sy=scrY(e.y); if(sy<-80||sy>H+80){ if(e.t==='jet'&&sy>H+80) e.alive=false; continue; }
-    if(e.t==='boat'||e.t==='heli'){ e.x+=e.vx*dt; const b=bounds(e.y); let lo=b.L+18, hi=b.R-18; if(b.IL){ if(e.x<b.IL) hi=b.IL-14; else lo=b.IR+14; }
+  for(const e of ents){ if(!e.alive) continue;
+    if(e.t==='jet'&&e.wait>0){ e.wait-=dt; e.y=pwy+e.off; if(e.wait<=0){ e.armed=true; e.x=e.dir>0?-50:W+50; } continue; }   // dönüşe hazırlanan jet
+    const sy=scrY(e.y); if(sy<-80||sy>H+80){ if(e.t==='jet'&&sy>H+80) e.alive=false; continue; }
+    if(e.t==='boat'||e.t==='heli'){
+      if(e.amb&&!e.go&&e.y-pwy<270){ e.go=true; e.vx=(G.px>e.x?1:-1)*(230+G.lv*6); }   // pusu: aniden fırlar
+      e.x+=e.vx*dt; const c=chanOf(bounds(e.y),e.x); let lo=c[0]+16, hi=c[1]-16; if(hi<lo){ lo=hi=(c[0]+c[1])/2; }
       if(e.x<lo){e.x=lo;e.vx=Math.abs(e.vx);} if(e.x>hi){e.x=hi;e.vx=-Math.abs(e.vx);} if(e.t==='heli') e.rot=(e.rot||0)+dt*30; }
-    if(e.t==='jet'){ if(!e.armed&&sy>-10){ e.armed=true; e.x=e.dir>0?-50:W+50; } if(e.armed) e.x+=e.dir*(200+G.lv*12)*dt; if(e.x<-80||e.x>W+80&&e.armed) {} }
+    if(e.t==='jet'){ if(!e.armed&&sy>-10){ e.armed=true; e.x=e.dir>0?-50:W+50; }
+      if(e.armed){ e.x+=e.dir*e.spd*dt;
+        // tek bomba: oyuncunun hizasından geçerken bırakır
+        if(e.bomb&&sy>40&&sy<G.py-110&&Math.abs(e.x-G.px)<22){ e.bomb=false; const T=1.1;
+          G.bombs.push({sx:e.x,sy:e.y,x:G.px,y:pwy+speed*T,t:0,T,ex:false}); SND.drop(); }
+        // vurulmadan çıkarsa 1-2 sn sonra yandan geri döner, bu kez uçağın hizasından
+        if(e.x<-70||e.x>W+70){ if(!e.back){ e.back=1; e.armed=false; e.dir*=-1; e.wait=1+Math.random(); e.off=Math.random()*34; e.spd*=1.1; e.y=pwy+e.off; } else e.alive=false; } } }
+    if(e.t==='tank'){ const dyp=e.y-pwy; e.ang=Math.atan2(-(pwy-e.y),G.px-e.x);
+      if(dyp>60&&dyp<480&&e.shots<2&&G.inv<=0){ e.cd-=dt; if(e.cd<=0){ e.cd=2; e.shots++;
+        const ty=pwy+speed*.9, d=Math.hypot(G.px-e.x,ty-e.y)||1, v=200; G.shells.push({x:e.x,y:e.y,vx:(G.px-e.x)/d*v,vy:(ty-e.y)/d*v,l:3.5}); SND.tank(); } } }
   }
+  // bombalar ve tank mermileri
+  for(const m of G.bombs){ m.t+=dt; if(!m.ex&&m.t>=m.T){ m.ex=true; boom(m.x,m.y,'#FF7A59'); boom(m.x,m.y,'#F2C94C'); SND.bomb(); } }
+  G.bombs=G.bombs.filter(m=>m.t<m.T+.6);
+  for(const h of G.shells){ h.x+=h.vx*dt; h.y+=h.vy*dt; h.l-=dt; } G.shells=G.shells.filter(h=>h.l>0);
   // mermi çarpışmaları
   for(const b of G.bullets){
-    // kıyıya çarpan mermi kaybolur
-    const bb=bounds(b.y); if(b.x<bb.L||b.x>bb.R||(bb.IL&&b.x>bb.IL&&b.x<bb.IR)){ b.dead=true; continue; }
-    for(const e of ents){ if(!e.alive) continue;
-      if(e.t==='bridge'){ if(Math.abs(b.y-e.y)<14){ b.dead=true; e.hp--; SND.hit(); e.hitT=.12; if(e.hp<=0){ e.alive=false; const p=addScore(PTS.bridge); SND.bridge(); vib(60); for(let i=0;i<26;i++) G.parts.push(part(140+Math.random()*110,e.y,'#F2C94C')); toast('Köprü yıkıldı','+'+fmt(p)); } break; } continue; }
-      if(e.t==='ammo'||e.t==='fuel') continue;
+    const bb=bounds(b.y); if(!inWater(bb,b.x)){ b.dead=true; continue; }   // kıyıya çarpan mermi kaybolur
+    for(const e of ents){
+      if(e.t==='bridge'&&!e.alive){ if(Math.abs(b.y-e.y)<14&&(b.x<e.gl||b.x>e.gr)){ b.dead=true; break; } continue; }   // köprü ayağı
+      if(!e.alive) continue;
+      if(e.t==='bridge'){ if(Math.abs(b.y-e.y)<14){ b.dead=true; e.hp--; SND.hit(); e.hitT=.12; if(e.hp<=0){ e.alive=false; const p=addScore(PTS.bridge); SND.bridge(); vib(60); for(let i=0;i<26;i++) G.parts.push(part(e.gl+Math.random()*(e.gr-e.gl),e.y,'#F2C94C')); toast('Köprü yıkıldı','+'+fmt(p)+' · ayaklar arasından geç'); } break; } continue; }
+      if(e.t==='ammo'||e.t==='fuel'||e.t==='mine'||e.t==='tank') continue;   // mayın su altında, tank kıyıda: vurulmaz
+      if(e.t==='jet'&&(!e.armed||e.wait>0)) continue;
       const hw=e.t==='jet'?24:18, hh=14;
       if(Math.abs(b.x-e.x)<hw&&Math.abs(b.y-e.y)<hh){ b.dead=true; e.alive=false; const p=addScore(PTS[e.t]); boom(e.x,e.y,'#F2C94C'); SND.boom(); break; }
     }
@@ -391,19 +440,25 @@ function step(dt){
   if(G.inv<=0){
     const pts=[[0,-22],[-19,6],[19,6],[-8,16],[8,16],[0,18]];
     for(const [ox,oy] of pts){ const wx=G.px+ox, wy=pwy-oy, b=bounds(wy);
-      if(wx<b.L||wx>b.R||(b.IL&&wx>b.IL&&wx<b.IR)) return crash('Kıyıya çarptın'); }
-    for(const e of ents){ if(!e.alive) continue;
-      if(e.t==='bridge'){ if(Math.abs(pwy-e.y)<16) return crash('Köprüye çarptın'); continue; }
+      if(!inWater(b,wx)) return crash('Kıyıya çarptın'); }
+    for(const m of G.bombs) if(m.ex&&m.t<m.T+.3&&Math.hypot(G.px-m.x,pwy-m.y)<36) return crash('Bomba isabet etti');
+    for(const h of G.shells) if(Math.hypot(G.px-h.x,pwy-h.y)<13) return crash('Tank mermisi');
+    for(const e of ents){
+      if(e.t==='bridge'){ if(Math.abs(pwy-e.y)<16){ if(e.alive) return crash('Köprüye çarptın'); if(G.px-17<e.gl||G.px+17>e.gr) return crash('Köprü ayağına çarptın'); } continue; }
+      if(!e.alive) continue;
       const dx=Math.abs(e.x-G.px), dy=Math.abs(e.y-pwy);
       if(e.t==='fuel'){ if(dx<26&&dy<32){ if(G.fuel<100){ G.fuel=Math.min(100,G.fuel+38*dt); if(Math.random()<.2) SND.fuel(); } } continue; }
       if(e.t==='ammo'){ if(dx<26&&dy<26){ e.alive=false; G.dbl=DBL_SURE; SND.pick(); toast('M alındı',DBL_SURE+' saniye ikili atış'); } continue; }
+      if(e.t==='mine'){ if(dx<22&&dy<22) return crash('Mayına çarptın'); continue; }
+      if(e.t==='tank') continue;
+      if(e.t==='jet'&&(!e.armed||e.wait>0)) continue;
       const hw=e.t==='jet'?26:20; if(dx<hw&&dy<16) return crash(e.t==='heli'?'Helikoptere çarptın':e.t==='jet'?'Uçağa çarptın':'Tekneye çarptın');
     }
   }
   // dar geçit bonusu
   const s=Math.floor(pwy/(SR*ROW)), info=sectionInfo[s];
   if(info){ const ir=pwy/ROW;
-    if(ir>(info.isl.start+info.isl.end)/2&&G.narrowSeen!==s+'m'){ const b=bounds(pwy); if(b.IL){ G.narrowSeen=s+'m'; G.inNarrow = info.isl.narrowLeft ? G.px<b.IL : G.px>b.IR; } }
+    if(ir>(info.isl.start+info.isl.end)/2&&G.narrowSeen!==s+'m'){ const b=bounds(pwy); if(b.IL){ G.narrowSeen=s+'m'; G.inNarrow = info.isl.tri ? true : info.isl.narrowLeft ? G.px<b.IL : G.px>b.IR; } }
     if(ir>info.isl.end&&G.narrowSeen===s+'m'){ G.narrowSeen=s+'d'; if(G.inNarrow){ G.score+=250; toast('Dar geçit','+250'); SND.bonus(); } }
   }
   // köprü geçişi = kayıt noktası
@@ -418,7 +473,7 @@ function passBridge(s){
   const lvNow=levelOfSection(s), lvNext=levelOfSection(s+1);
   if(lvNext!==lvNow||s+1===firstSectionOf(11)){
     const bonus=2000*lvNow; G.score+=bonus; G.lives=Math.min(3,G.lives+1); SND.bonus();
-    toast(`Bölüm ${lvNow} tamam`,`+${fmt(bonus)} · +1 can · Sıradaki: ${LV[Math.min(10,lvNext)].ad}`);
+    toast(`Bölüm ${lvNow} tamam`,`+${fmt(bonus)} · +1 can · Sıradaki: ${LV[Math.min(10,lvNext)].ad}${YENI[lvNext]?' · Yeni: '+YENI[lvNext]:''}`);
   } else toast(`Köprü geçildi · ×${G.mult}`,`yakıt bonusu +${fb}`);
   if(TEST) window.__events.push('bridge'+s);
 }
@@ -501,6 +556,18 @@ function ammo(x,y,t){ ctx.save(); ctx.translate(x,y); const s=1+Math.sin(t*6)*.0
   ctx.strokeStyle='rgba(79,209,197,.45)'; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(0,0,22,0,7); ctx.stroke();
   ctx.beginPath(); for(let i=0;i<6;i++){ const a=Math.PI/6+i*Math.PI/3; ctx.lineTo(Math.cos(a)*15,Math.sin(a)*15); } ctx.closePath(); ctx.fillStyle='#0B1020'; ctx.fill(); ctx.strokeStyle='#4FD1C5'; ctx.lineWidth=3; ctx.stroke();
   ctx.fillStyle='#4FD1C5'; ctx.font='700 15px "Chakra Petch",sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('M',0,1); ctx.restore(); }
+function mine(x,y,dist){ // su altı mayını: uzaktan soluk, yaklaşınca belirginleşir
+  const a=dist>330?.22:Math.min(1,.22+(330-dist)/200); ctx.save(); ctx.globalAlpha=a; ctx.translate(x,y);
+  ctx.strokeStyle='rgba(191,243,238,.6)'; ctx.lineWidth=1.5; ctx.beginPath(); ctx.arc(0,0,17+Math.sin(G.time*3)*2,0,7); ctx.stroke();
+  ctx.fillStyle='#1A2238'; ctx.strokeStyle='#1A2238'; ctx.lineWidth=3; ctx.beginPath(); for(let i=0;i<8;i++){ const q=i*Math.PI/4; ctx.moveTo(Math.cos(q)*8,Math.sin(q)*8); ctx.lineTo(Math.cos(q)*14,Math.sin(q)*14); } ctx.stroke();
+  ctx.beginPath(); ctx.arc(0,0,9,0,7); ctx.fill(); if(dist<330&&Math.floor(G.time*5)%2){ ctx.fillStyle='#FF3B30'; ctx.beginPath(); ctx.arc(0,0,3,0,7); ctx.fill(); }
+  ctx.restore(); }
+function tank(x,y,ang){ ctx.save(); ctx.translate(x,y);
+  ctx.fillStyle='rgba(0,0,0,.25)'; rr(-15,-10,32,24,4); ctx.fill();
+  ctx.fillStyle='#2F3A26'; ctx.fillRect(-16,-13,32,6); ctx.fillRect(-16,7,32,6);
+  ctx.fillStyle='#5B6B3A'; rr(-13,-9,26,18,3); ctx.fill();
+  ctx.rotate(ang); ctx.fillStyle='#3E4A2A'; ctx.fillRect(4,-2.5,18,5); ctx.beginPath(); ctx.arc(0,0,7,0,7); ctx.fill(); ctx.fillStyle='#FF7A59'; ctx.fillRect(-2,-2,4,4);
+  ctx.restore(); }
 function rr(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
 function hash(n){ n=(n^61)^(n>>>16); n=n+(n<<3); n=n^(n>>>4); n=Math.imul(n,0x27d4eb2d); return (n^(n>>>15))>>>0; }
 
@@ -515,11 +582,11 @@ function draw(){
   // kıyılar
   const side=(arr,sign,off,col)=>{ ctx.fillStyle=col; ctx.beginPath(); const edge=sign<0?0:W; ctx.moveTo(edge,scrY(r0*ROW)); for(let r=r0;r<=r1;r++) ctx.lineTo(arr[r]+off*sign,scrY(r*ROW)); ctx.lineTo(edge,scrY(r1*ROW)); ctx.closePath(); ctx.fill(); };
   side(rows.L,-1,0,pal.k); side(rows.L,-1,30,pal.kd); side(rows.R,1,0,pal.k); side(rows.R,1,30,pal.kd);
-  // adalar
-  let r=r0; while(r<=r1){ if(!rows.IL[r]){ r++; continue; } let e=r; while(e<=r1+20&&rows.IL[e]) e++;
-    ctx.fillStyle=pal.k; ctx.beginPath(); ctx.moveTo(rows.IL[r],scrY(r*ROW)); for(let i=r;i<e;i++) ctx.lineTo(rows.IL[i],scrY(i*ROW)); for(let i=e-1;i>=r;i--) ctx.lineTo(rows.IR[i],scrY(i*ROW)); ctx.closePath(); ctx.fill();
-    ctx.fillStyle=pal.kd; ctx.beginPath(); for(let i=r;i<e;i++) ctx.lineTo(rows.IL[i]+10,scrY(i*ROW)); for(let i=e-1;i>=r;i--) ctx.lineTo(rows.IR[i]-10,scrY(i*ROW)); ctx.closePath(); ctx.fill();
-    r=e; }
+  // adalar (üçlü geçitte iki ada)
+  for(const [A,B] of [[rows.IL,rows.IR],[rows.JL,rows.JR]]){ let r=r0; while(r<=r1){ if(!A[r]){ r++; continue; } let e=r; while(e<=r1+20&&A[e]) e++;
+    ctx.fillStyle=pal.k; ctx.beginPath(); ctx.moveTo(A[r],scrY(r*ROW)); for(let i=r;i<e;i++) ctx.lineTo(A[i],scrY(i*ROW)); for(let i=e-1;i>=r;i--) ctx.lineTo(B[i],scrY(i*ROW)); ctx.closePath(); ctx.fill();
+    ctx.fillStyle=pal.kd; ctx.beginPath(); for(let i=r;i<e;i++) ctx.lineTo(A[i]+Math.min(10,(B[i]-A[i])/3),scrY(i*ROW)); for(let i=e-1;i>=r;i--) ctx.lineTo(B[i]-Math.min(10,(B[i]-A[i])/3),scrY(i*ROW)); ctx.closePath(); ctx.fill();
+    r=e; } }
   // ağaçlar / süs
   for(let r=r0;r<=r1;r++){ const h=hash(r*31+7); if(h%4) continue; const left=h&16; const y=scrY(r*ROW);
     const x=left? rows.L[r]-40-(h>>>8)%60 : rows.R[r]+40+(h>>>8)%60; if(x<6||x>W-6) continue; const rad=9+(h>>>12)%8;
@@ -531,12 +598,32 @@ function draw(){
         ctx.fillStyle='rgba(242,201,76,.85)'; ctx.fillRect(b.L-30,y-2,b.R-b.L+60,4);
         if(e.hp<e.max){ ctx.fillStyle='#0B1020'; rr(170,y-30,50,8,3); ctx.fill(); ctx.fillStyle='#FF7A59'; rr(170,y-30,50*e.hp/e.max,8,3); ctx.fill(); }
         if(e.hitT>0) e.hitT-=1/60; }
-      else { ctx.fillStyle='#2A3256'; ctx.fillRect(b.L-30,y-13,34,26); ctx.fillRect(b.R-4,y-13,34,26); }
+      else { // yıkık köprü: iki yanda ayaklar, kırık uçlar
+        for(const [x0,x1,dir] of [[b.L-30,e.gl,1],[e.gr,b.R+30,-1]]){ ctx.fillStyle='#2A3256'; ctx.beginPath(); ctx.moveTo(x0,y-13);
+          if(dir>0){ ctx.lineTo(x1-4,y-13); ctx.lineTo(x1,y-6); ctx.lineTo(x1-5,y+1); ctx.lineTo(x1+1,y+7); ctx.lineTo(x1-3,y+13); ctx.lineTo(x0,y+13); }
+          else { ctx.lineTo(x1,y-13); ctx.lineTo(x1,y+13); ctx.lineTo(x0+3,y+13); ctx.lineTo(x0-1,y+7); ctx.lineTo(x0+5,y+1); ctx.lineTo(x0,y-6); ctx.lineTo(x0+4,y-13); }
+          ctx.closePath(); ctx.fill(); ctx.strokeStyle='#5B6487'; ctx.lineWidth=3; ctx.stroke();
+          ctx.strokeStyle='#C9CEE0'; ctx.lineWidth=1.5; ctx.beginPath(); const tip=dir>0?x1:x0; ctx.moveTo(tip,y-8); ctx.lineTo(tip+dir*7,y-11); ctx.moveTo(tip,y+5); ctx.lineTo(tip+dir*8,y+9); ctx.stroke(); } }
       continue; }
     if(!e.alive) continue;
-    if(e.t==='boat') boat(e.x,y,e.vx); else if(e.t==='heli') heli(e.x,y,e.rot||0); else if(e.t==='fuel') fuelDepot(e.x,y); else if(e.t==='ammo') ammo(e.x,y,G.time);
+    if(e.t==='boat'){ boat(e.x,y,e.vx); if(e.fast){ ctx.strokeStyle='rgba(191,243,238,.7)'; ctx.lineWidth=2; const k=e.vx<0?1:-1; ctx.beginPath(); ctx.moveTo(e.x+k*30,y-8); ctx.lineTo(e.x+k*70,y-20); ctx.moveTo(e.x+k*30,y+8); ctx.lineTo(e.x+k*70,y+20); ctx.stroke(); } }
+    else if(e.t==='heli'){ heli(e.x,y,e.rot||0); if(e.amb&&!e.go&&Math.floor(G.time*4)%2){ ctx.fillStyle='#FF3B30'; ctx.beginPath(); ctx.arc(e.x,y+4,3.5,0,7); ctx.fill(); } }
+    else if(e.t==='fuel') fuelDepot(e.x,y); else if(e.t==='ammo') ammo(e.x,y,G.time);
+    else if(e.t==='mine') mine(e.x,y,e.y-playerWY());
+    else if(e.t==='tank') tank(e.x,y,e.ang);
     else if(e.t==='jet'&&e.armed) jet(e.x,y,.5,PAL_EN,e.dir>0?Math.PI/2:-Math.PI/2);
   }
+  // bombalar: hedef dairesi küçülür, bomba hedefe süzülür
+  for(const m of G.bombs){ const ty=scrY(m.y);
+    if(!m.ex){ const k=m.t/m.T, rad=36+(1-k)*24; ctx.strokeStyle=Math.floor(m.t*10)%2?'#FF3B30':'#FF7A59'; ctx.lineWidth=2.5; ctx.setLineDash([6,5]); ctx.beginPath(); ctx.arc(m.x,ty,rad,0,7); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle='rgba(255,59,48,.14)'; ctx.beginPath(); ctx.arc(m.x,ty,36,0,7); ctx.fill();
+      const bx=m.sx+(m.x-m.sx)*k, byw=m.sy+(m.y-m.sy)*k, by=scrY(byw), sc=1.4-k*.6; ctx.save(); ctx.translate(bx,by); ctx.scale(sc,sc); ctx.fillStyle='#1A2238'; ctx.beginPath(); ctx.ellipse(0,0,4,8,0,0,7); ctx.fill(); ctx.fillStyle='#FF7A59'; ctx.fillRect(-4,-10,8,3); ctx.restore(); }
+    else { const a=1-(m.t-m.T)/.6; ctx.fillStyle=`rgba(255,122,89,${a*.5})`; ctx.beginPath(); ctx.arc(m.x,ty,36,0,7); ctx.fill(); } }
+  for(const h of G.shells){ const y=scrY(h.y); ctx.strokeStyle='rgba(255,59,48,.65)'; ctx.lineWidth=4; ctx.lineCap='round'; ctx.beginPath(); ctx.moveTo(h.x,y); ctx.lineTo(h.x-h.vx*.09,y+h.vy*.09); ctx.stroke();
+    ctx.fillStyle='rgba(255,59,48,.35)'; ctx.beginPath(); ctx.arc(h.x,y,9+Math.sin(G.time*20)*2,0,7); ctx.fill(); ctx.fillStyle='#FF3B30'; ctx.beginPath(); ctx.arc(h.x,y,5,0,7); ctx.fill(); ctx.fillStyle='#FFFFFF'; ctx.beginPath(); ctx.arc(h.x,y,2.2,0,7); ctx.fill(); }
+  // geri dönecek jet: kenarda uyarı oku
+  for(const e of ents){ if(e.t!=='jet'||!(e.wait>0)||e.wait>.9||Math.floor(G.time*8)%2) continue; const y=G.py-e.off, x=e.dir>0?6:W-6, d=e.dir>0?1:-1;
+    ctx.fillStyle='#FF3B30'; ctx.beginPath(); ctx.moveTo(x+d*20,y); ctx.lineTo(x,y-11); ctx.lineTo(x,y+11); ctx.closePath(); ctx.fill(); }
   // mermiler
   ctx.strokeStyle='#F2C94C'; ctx.lineWidth=3; ctx.lineCap='round'; ctx.beginPath();
   for(const b of G.bullets){ const y=scrY(b.y); ctx.moveTo(b.x,y); ctx.lineTo(b.x,y+10); } ctx.stroke();
@@ -602,8 +689,8 @@ let demoT=null;
 function startDemo(){
   if(G.running&&G.demo) return; newRun(); G.demo=true; G.started=true; $('#tut').style.display='none'; $('#hud').style.display='none';
   clearInterval(demoT); demoT=setInterval(()=>{ if(!G.demo) return clearInterval(demoT); G.fuel=100; G.inv=1;
-    const wy=playerWY()+90, b=bounds(wy); let lo=b.L,hi=b.R; if(b.IL){ if((b.R-b.IR)>(b.IL-b.L)) lo=b.IR; else hi=b.IL; }
-    G.tx=(lo+hi)/2+Math.sin(G.time*1.3)*12; G.ty=H*.75; },40);
+    const wy=playerWY()+90, b=bounds(wy); let c=chanOf(b,G.px); if(c[1]-c[0]<60) c=segs(b).sort((a,d)=>(d[1]-d[0])-(a[1]-a[0]))[0];
+    G.tx=(c[0]+c[1])/2+Math.sin(G.time*1.3)*12; G.ty=H*.75; },40);
 }
 function stopDemo(){ if(G.demo){ G.demo=false; G.running=false; clearInterval(demoT); } }
 function splash(){
@@ -732,7 +819,17 @@ function feedback(){
 function about(){
   show(`<div class="about" style="display:flex;flex-direction:column;gap:8px"><h2 style="font:700 30px var(--fd)">Hakkında</h2>
     <p style="font:700 22px/1.2 Caveat,cursive;color:var(--ink)">Çocukluğumuzun oyununa saygılarımızla. 1982'nin nehir uçuşu oyunlarından esinlenen, aile için yapılmış bir oyundur; adı, çizimleri ve kodu bu oyuna özeldir.</p>
-    <h3>Nasıl oynanır</h3><ul style="margin:0;padding-left:18px"><li>Uçağın üstüne basılı tut ve sürükle. Ateş kendiliğinden.</li><li>Uçağı yukarı taşırsan nehir hızlanır, aşağı çekersen yavaşlar.</li><li>Kıyıya, adaya, köprüye, helikoptere, tekneye ya da düşman uçağına çarparsan patlarsın.</li><li>Yakıt sürekli azalır. Yakıt istasyonunun üstünden geçerek dolarsın. Ateş hiç durmadığı için mermiler istasyonun üstünden geçer.</li><li>Köprü tek atışla yıkılmaz (4 isabetten başlar, bölümle 8'e çıkar). Yıkmadan geçemezsin. Her köprü kayıt noktasıdır.</li><li>Ateş tek namludur. Bazı dar kanallarda seyrek olarak <b>M</b> çıkar: üstünden geçince 12 saniye <b>ikili atış</b> kazanırsın (sağ altta ×2 ve kalan süre). Can gidince ikili atış da biter.</li></ul>
+    <h3>Nasıl oynanır</h3><ul style="margin:0;padding-left:18px"><li>Uçağın üstüne basılı tut ve sürükle. Ateş kendiliğinden.</li><li>Uçağı yukarı taşırsan nehir hızlanır, aşağı çekersen yavaşlar.</li><li>Kıyıya, adaya, köprüye, köprü ayağına, helikoptere, tekneye, düşman uçağına ya da mayına çarparsan; bomba ya da tank mermisi isabet ederse patlarsın.</li><li>Yakıt sürekli azalır. Yakıt istasyonunun üstünden geçerek dolarsın. Ateş hiç durmadığı için mermiler istasyonun üstünden geçer.</li><li>Köprü tek atışla yıkılmaz (10 isabetten başlar, her bölümde +1, en fazla 18). Yıkılınca iki yanda ayakları kalır; aradaki boşluktan geçmelisin, boşluk bölüm ilerledikçe daralır. Her köprü kayıt noktasıdır.</li><li>Ateş tek namludur. Bazı dar kanallarda seyrek olarak <b>M</b> çıkar: üstünden geçince 12 saniye <b>ikili atış</b> kazanırsın (sağ altta ×2 ve kalan süre). Can gidince ikili atış da biter.</li></ul>
+    <h3>Tehlikeler</h3><p>Nehir her oyunda aynıdır: geçitlerin, mayınların ve köprülerin yeri değişmez, öğrenen ilerler.</p><ul style="margin:0;padding-left:18px">
+      <li><b>Tekne ve helikopter</b> (1. bölüm): her biri farklı hızdadır; kimi durur, kimi hızlı gider.</li>
+      <li><b>Boğaz</b>: bazı köprülerden hemen önce nehir daralır. Boğazdan çıkıp köprüyü vurmak ve ayakların arasından geçmek gerekir.</li>
+      <li><b>Yan jet</b> (2. bölüm): yandan geçer, senin hizana gelince tek bomba bırakır. Kırmızı hedef dairesi bombanın düşeceği yerdir, daireden çık. Vurulmazsa 1-2 saniye sonra karşı yandan, bu kez senin hizandan geri gelir; kenarda kırmızı ok uyarır.</li>
+      <li><b>Üçlü geçit</b> (2. bölüm): nehir iki adayla üç dar kanala ayrılır. Üçünden geçmek de dar geçit bonusu verir.</li>
+      <li><b>Mayın</b> (3. bölüm): üçlü geçitlerde bir kanal mayınlıdır. Mayınlar su altındadır, vurulamaz; uzaktan soluk görünür, yaklaşınca kırmızı yanıp söner. Mayınlı kanalı hatırlamak gerekir.</li>
+      <li><b>Kıyı tankı</b> (4. bölüm): kıyıda durur, uçağa nişan alıp en fazla iki atış yapar. Kıyıda olduğu için vurulamaz, mermiden kaçmak gerekir.</li>
+      <li><b>Pusu helikopteri</b> (5. bölüm): kırmızı ışığı yanıp söner, bekler; yaklaşınca aniden önüne fırlar.</li>
+      <li><b>Sürat botu</b> (6. bölüm): uzun dümen suyuyla çok hızlı yan yana gider.</li>
+      <li>7–10. bölümler: hepsi bir arada, daha sık; köprüler daha dayanıklı, geçitler daha dar.</li></ul>
     <h3>Canlar</h3><p>3 canla başlarsın. Can gidince son köprüden dolu yakıtla devam edersin. Son can kırmızı yanıp söner. Üç can bitince oyun biter, sonraki oyun en baştan başlar. Bölüm bitince +1 can (en fazla 3).</p>
     <h3>Birce hakkı</h3><p>Sezonda bir kez: oyun bitince son köprüden 1 canla devam. Kullananın adının yanında Birce rozeti görünür.</p>
     <h3>Puanlar</h3><table><tr><td>Tekne</td><td>30</td></tr><tr><td>Helikopter</td><td>60</td></tr><tr><td>Düşman uçağı (2. bölümden)</td><td>100</td></tr><tr><td>Köprü</td><td>500</td></tr></table>
@@ -755,7 +852,7 @@ async function boot(){
   splash();
 }
 addEventListener('online',()=>{ if(!ui.classList.contains('hide')&&/bağlantısı yok/.test(ui.textContent)) boot(); });
-if(TEST){ window.__events=[]; window.__G=G; window.__S=()=>S; window.__api={startGame,gameOver,crash,useBirce,spawnAt,bounds,ents:()=>ents,sectionInfo,levelOfSection,firstSectionOf,passBridge}; }
+if(TEST){ window.__events=[]; window.__G=G; window.__S=()=>S; window.__api={startGame,gameOver,crash,useBirce,spawnAt,bounds,segs,chanOf,inWater,ents:()=>ents,sectionInfo,levelOfSection,firstSectionOf,passBridge}; }
 boot();
 </script>
 </body>
